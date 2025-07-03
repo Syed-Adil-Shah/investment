@@ -104,10 +104,12 @@ if not df.empty:
         bars = sector_data['P/L (%)'].plot(kind='bar', ax=ax2, color='orange')
         ax2.set_ylabel("P/L (%)")
         ax2.set_title("Sector Performance")
+        ax2.set_ylim(min(0, sector_data['P/L (%)'].min() - 5), sector_data['P/L (%)'].max() + 8)
 
-        # Add percentage labels on bars
+        # Add labels
         for idx, val in enumerate(sector_data['P/L (%)']):
-            ax2.text(idx, val + (1 if val >= 0 else -3), f"{val:.1f}%", ha='center', va='bottom' if val >= 0 else 'top', fontsize=8)
+            offset = 1 if val >= 0 else -2
+            ax2.text(idx, val + offset, f"{val:.1f}%", ha='center', va='bottom' if val >= 0 else 'top', fontsize=8)
 
         st.pyplot(fig2)
 
