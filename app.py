@@ -24,7 +24,7 @@ with st.form("Add Entry"):
     date = col2.date_input("Buy Date", datetime.date.today())
     col3, col4, col5 = st.columns(3)
     price = col3.number_input("Buy Price ($)", min_value=0.0)
-    shares = col4.number_input("Shares", min_value=0)
+    shares = col4.number_input("Shares", min_value=0.0, format="%.6f")
     sector_options = ['Technology', 'Healthcare', 'Financials', 'Energy', 'Utilities', 'Consumer Goods', 'Industrials', 'Materials', 'Other']
     sector = col5.selectbox("Sector", sector_options)
     submit = st.form_submit_button("💾 Add Trade")
@@ -33,6 +33,37 @@ with st.form("Add Entry"):
         df = pd.concat([df, pd.DataFrame([[ticker, date, price, shares, sector]], columns=df.columns)], ignore_index=True)
         df.to_csv(DATA_FILE, index=False)
         st.success(f"Added {shares} shares of {ticker}!")
+
+# --- Editable Trade Table ---
+if not df.empty:
+    st.markdown("### ✏️ Edit or Delete Trades")
+    df['index'] = df.index
+    selected_row = st.selectbox("Select a trade to edit/delete", df['index'].tolist())
+
+    if selected_row is not None:
+        trade = df.loc[selected_row]
+        edit_col1, edit_col2 = st.columns(2)
+        new_ticker = edit_col1.text_input("Edit Ticker", trade['Ticker'])
+        new_date = edit_col2.date_input("Edit Date", trade['Date'])
+        edit_col3, edit_col4, edit_col5 = st.columns(3)
+        new_price = edit_col3.number_input("Edit Buy Price", value=float(trade['Buy Price']))
+        new_shares = edit_col4.number_input("Edit Shares", value=float(trade['Shares']), format="%.6f")
+        new_sector = edit_col5.selectbox("Edit Sector", sector_options, index=sector_options.index(trade['Sector']) if trade['Sector'] in sector_options else 0)
+
+        update_btn, delete_btn = st.columns(2)
+        if update_btn.button("✅ Update Trade"):
+            df.at[selected_row, 'Ticker'] = new_ticker.upper()
+            df.at[selected_row, 'Date'] = new_date
+            df.at[selected_row, 'Buy Price'] = new_price
+            df.at[selected_row, 'Shares'] = new_shares
+            df.at[selected_row, 'Sector'] = new_sector
+            df.to_csv(DATA_FILE, index=False)
+            st.success("Trade updated!")
+
+        if delete_btn.button("🗑️ Delete Trade"):
+            df = df.drop(selected_row).reset_index(drop=True)
+            df.to_csv(DATA_FILE, index=False)
+            st.warning("Trade deleted!")
 
 # Portfolio logic
 if not df.empty:
