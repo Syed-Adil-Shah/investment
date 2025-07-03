@@ -93,12 +93,16 @@ if not df.empty:
         st.pyplot(fig1)
 
     with top3:
-        st.markdown("### 📈 Sector P/L")
-        sector_pl = agg.groupby('Sector')['P/L ($)'].sum()
+        st.markdown("### 📈 Sector P/L (%)")
+        sector_data = agg.groupby('Sector').agg({
+            'Total Invested': 'sum',
+            'P/L ($)': 'sum'
+        })
+        sector_data['P/L (%)'] = (sector_data['P/L ($)'] / sector_data['Total Invested']) * 100
         fig2, ax2 = plt.subplots(figsize=(3, 2))
-        sector_pl.plot(kind='bar', ax=ax2, color='teal')
-        ax2.set_ylabel("P/L ($)")
-        ax2.set_title("Sector P/L")
+        sector_data['P/L (%)'].plot(kind='bar', ax=ax2, color='orange')
+        ax2.set_ylabel("P/L (%)")
+        ax2.set_title("Sector Performance")
         st.pyplot(fig2)
 
     # --- Portfolio Table ---
