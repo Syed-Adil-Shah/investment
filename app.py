@@ -15,10 +15,9 @@ if os.path.exists(DATA_FILE):
 else:
     df = pd.DataFrame(columns=['Ticker', 'Date', 'Buy Price', 'Shares', 'Sector'])
 
-# --- UI: Entry Form ---
 st.title("📊 Stock Portfolio Tracker")
-st.markdown("Dark-themed minimal portfolio tracker")
 
+# Entry form
 with st.form("Add Entry"):
     col1, col2 = st.columns(2)
     ticker = col1.text_input("Stock Ticker").upper()
@@ -35,7 +34,7 @@ with st.form("Add Entry"):
         df.to_csv(DATA_FILE, index=False)
         st.success(f"Added {shares} shares of {ticker}!")
 
-# --- Portfolio Aggregation ---
+# Portfolio logic
 if not df.empty:
     df['Ticker'] = df['Ticker'].str.upper()
     agg = df.groupby('Ticker').apply(
@@ -47,7 +46,6 @@ if not df.empty:
         })
     ).reset_index()
 
-    # Fetch latest prices
     prices = {}
     for t in agg['Ticker']:
         try:
@@ -62,7 +60,38 @@ if not df.empty:
     total_invested = agg['Total Invested'].sum()
     agg['Portfolio %'] = (agg['Total Invested'] / total_invested) * 100
 
-    # --- Display Data ---
+    total_value = agg['Market Value'].sum()
+    profit = total_value - total_invested
+    profit_pct = (profit / total_invested) * 100
+
+    # --- Top Row: Metrics + Charts ---
+    top1, top2, top3 = st.columns([2, 1, 1])
+
+    with top1:
+        st.markdown("### 💼 Portfolio Summary")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Invested", f"${total_invested:,.2f}")
+        c2.metric("Market Value", f"${total_value:,.2f}")
+        c3.metric("Total P/L", f"${profit:,.2f}", f"{profit_pct:.2f}%")
+
+    with top2:
+        st.markdown("### 🧩 Sector Allocation")
+        pie_data = agg.groupby('Sector')['Total Invested'].sum()
+        fig1, ax1 = plt.subplots(figsize=(3, 3))
+        ax1.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
+        ax1.axis('equal')
+        st.pyplot(fig1)
+
+    with top3:
+        st.markdown("### 📈 Sector P/L")
+        sector_pl = agg.groupby('Sector')['P/L ($)'].sum()
+        fig2, ax2 = plt.subplots(figsize=(3, 2))
+        sector_pl.plot(kind='bar', ax=ax2, color='teal')
+        ax2.set_ylabel("P/L ($)")
+        ax2.set_title("Sector P/L")
+        st.pyplot(fig2)
+
+    # --- Portfolio Table ---
     st.subheader("🧾 Portfolio Overview")
     st.dataframe(agg.style.format({
         'Avg Buy Price': '${:.2f}',
@@ -73,33 +102,5 @@ if not df.empty:
         'P/L (%)': '{:.2f}%',
         'Portfolio %': '{:.2f}%'
     }), use_container_width=True)
-
-    # --- Summary Metrics ---
-    total_value = agg['Market Value'].sum()
-    profit = total_value - total_invested
-    profit_pct = (profit / total_invested) * 100
-
-    st.markdown("### 💼 Portfolio Summary")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Invested", f"${total_invested:,.2f}")
-    c2.metric("Market Value", f"${total_value:,.2f}")
-    c3.metric("Total P/L", f"${profit:,.2f}", f"{profit_pct:.2f}%")
-
-    # --- Charts ---
-    st.markdown("### 🧩 Sector Allocation (Pie)")
-    pie_data = agg.groupby('Sector')['Total Invested'].sum()
-    fig1, ax1 = plt.subplots()
-    ax1.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
-    ax1.axis('equal')
-    st.pyplot(fig1)
-
-    st.markdown("### 📈 Sector-wise Profit / Loss")
-    sector_pl = agg.groupby('Sector')['P/L ($)'].sum()
-    fig2, ax2 = plt.subplots()
-    sector_pl.plot(kind='bar', ax=ax2, color='teal')
-    ax2.set_ylabel("P/L ($)")
-    ax2.set_title("Sector Profit / Loss")
-    st.pyplot(fig2)
-
 else:
     st.info("Add trades to get started.")
