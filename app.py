@@ -99,10 +99,16 @@ if not df.empty:
             'P/L ($)': 'sum'
         })
         sector_data['P/L (%)'] = (sector_data['P/L ($)'] / sector_data['Total Invested']) * 100
+
         fig2, ax2 = plt.subplots(figsize=(3, 2))
-        sector_data['P/L (%)'].plot(kind='bar', ax=ax2, color='orange')
+        bars = sector_data['P/L (%)'].plot(kind='bar', ax=ax2, color='orange')
         ax2.set_ylabel("P/L (%)")
         ax2.set_title("Sector Performance")
+
+        # Add percentage labels on bars
+        for idx, val in enumerate(sector_data['P/L (%)']):
+            ax2.text(idx, val + (1 if val >= 0 else -3), f"{val:.1f}%", ha='center', va='bottom' if val >= 0 else 'top', fontsize=8)
+
         st.pyplot(fig2)
 
     # --- Portfolio Table ---
