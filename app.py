@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
-from supabase.client import create_client, Client
+from supabase import create_client, Client  # ✅ correct for supabase-py
 import os
 
 # --- Supabase Connection ---
