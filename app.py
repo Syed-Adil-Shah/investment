@@ -76,13 +76,13 @@ if not df.empty:
         'Total Invested': (x['Shares'] * x['Buy Price']).sum(),
         'Avg Buy Price': (x['Shares'] * x['Buy Price']).sum() / x['Shares'].sum(),
         'Sector': x['Sector'].iloc[0]
-    })).reset_index()
+    })).reset_index(drop=True)
 
     sell_agg = sells.groupby('Ticker').apply(lambda x: pd.Series({
         'Total Sold Shares': x['Shares'].sum(),
         'Total Realized': (x['Shares'] * x['Sell Price']).sum(),
         'Realized Gain': (x['Shares'] * x['Sell Price']).sum() - (x['Shares'] * x['Buy Price']).sum()
-    })).reset_index()
+    })).reset_index(drop=True)
 
     agg = agg.merge(sell_agg, on='Ticker', how='left').fillna(0)
 
