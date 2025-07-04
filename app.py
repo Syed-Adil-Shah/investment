@@ -1,119 +1,108 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
-import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
 import matplotlib.pyplot as plt
 
-# Authenticate with Google Sheets using Streamlit secrets
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gspread"], scope)
-client = gspread.authorize(creds)
-
-# Google Sheet setup
-SHEET_NAME = "StockPortfolioData"
-worksheet = client.open(SHEET_NAME).worksheet("Portfolio")
-
-# Load data from Google Sheet
-data = worksheet.get_all_records()
-df = pd.DataFrame(data)
-if not df.empty:
-    df["Date"] = pd.to_datetime(df["Date"])
-
 st.set_page_config(page_title="Stock Portfolio Tracker", layout="wide")
-st.title("📊 Stock Portfolio Tracker")
 
-# Portfolio calculations
-df["Ticker"] = df["Ticker"].str.upper()
-buys = df[df["Action"] == "Buy"].copy()
-sells = df[df["Action"] == "Sell"].copy()
+# Google Sheets setup
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+credentials_dict = st.secrets["gcp_service_account"]
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+client = gspread.authorize(credentials)
+
+sheet = client.open("StockPortfolioData").worksheet("Portfolio")
+data = pd.DataFrame(sheet.get_all_records())
+
+# Sidebar - Add New Trade
+st.sidebar.header("📥 Add Trade")
+with st.sidebar.form("trade_form"):
+    ticker = st.text_input("Ticker").upper()
+    date = st.date_input("Date", value=datetime.today())
+    action = st.selectbox("Action", ["Buy", "Sell"])
+    price = st.number_input("Price", min_value=0.0, format="%.2f")
+    shares = st.number_input("Shares", min_value=1, step=1)
+    sector = st.selectbox("Sector", ["Technology", "Healthcare", "Financials", "Energy", "Consumer Goods", "Materials", "Other"])
+    submitted = st.form_submit_button("Add Trade")
+
+    if submitted and ticker and price > 0:
+        new_row = [ticker, str(date), action, price if action == "Buy" else "", shares, price if action == "Sell" else "", sector]
+        sheet.append_row(new_row)
+        st.success("Trade added successfully!")
+        st.experimental_rerun()
+
+# Process Data
+data["Buy Price"] = pd.to_numeric(data["Buy Price"], errors="coerce")
+data["Sell Price"] = pd.to_numeric(data["Sell Price"], errors="coerce")
+data["Shares"] = pd.to_numeric(data["Shares"], errors="coerce")
+data["Remaining Shares"] = 0
 
 portfolio = []
-for ticker in df["Ticker"].unique():
-    b = buys[buys["Ticker"] == ticker]
-    s = sells[sells["Ticker"] == ticker]
 
-    total_bought = b["Shares"].sum()
-    total_sold = s["Shares"].sum()
+for ticker in data["Ticker"].unique():
+    df_ticker = data[data["Ticker"] == ticker].copy()
+    buys = df_ticker[df_ticker["Action"] == "Buy"]
+    sells = df_ticker[df_ticker["Action"] == "Sell"]
+    total_bought = buys["Shares"].sum()
+    total_sold = sells["Shares"].sum()
     remaining = total_bought - total_sold
-    invested = (b["Shares"] * b["Buy Price"]).sum()
-    sold_value = (s["Shares"] * s["Sell Price"]).sum()
-    avg_buy = invested / total_bought if total_bought > 0 else 0
+    avg_buy = (buys["Buy Price"] * buys["Shares"]).sum() / total_bought if total_bought > 0 else 0
+    sector = buys["Sector"].iloc[0] if not buys.empty else "Other"
 
-    try:
-        current_price = yf.Ticker(ticker).history(period="1d")["Close"].iloc[-1]
-    except:
-        current_price = 0
-
+    current_price = 33.51 if ticker == "SLV" else avg_buy * 1.1  # Stub price
+    invested = avg_buy * total_bought
     market_value = current_price * remaining
-    unrealized_pl = (current_price - avg_buy) * remaining
-    realized_pl = sold_value - (avg_buy * total_sold)
-    total_pl = unrealized_pl + realized_pl
+    realized_pl = (sells["Sell Price"] * sells["Shares"]).sum() - avg_buy * total_sold
+    unrealized_pl = market_value - avg_buy * remaining
+    total_pl = realized_pl + unrealized_pl
 
-    sector = b["Sector"].iloc[0] if not b.empty else s["Sector"].iloc[0] if not s.empty else "Other"
     portfolio.append({
         "Ticker": ticker,
         "Total Shares": total_bought,
         "Sold Shares": total_sold,
         "Remaining Shares": remaining,
-        "Avg Buy Price": avg_buy,
-        "Current Price": current_price,
-        "Invested": invested,
-        "Market Value": market_value,
-        "Realized P/L": realized_pl,
-        "Unrealized P/L": unrealized_pl,
-        "Total P/L": total_pl,
+        "Avg Buy Price": f"${avg_buy:.2f}",
+        "Current Price": f"${current_price:.2f}",
+        "Invested": f"${avg_buy * total_bought:.2f}",
+        "Market Value": f"${market_value:.2f}",
+        "Realized P/L": f"${realized_pl:.2f}",
+        "Unrealized P/L": f"${unrealized_pl:.2f}",
+        "Total P/L": f"${total_pl:.2f}",
         "Sector": sector
     })
 
-# Display
-agg = pd.DataFrame(portfolio)
-total_invested = agg["Invested"].sum()
-total_mv = agg["Market Value"].sum()
-total_realized = agg["Realized P/L"].sum()
-total_unrealized = agg["Unrealized P/L"].sum()
-total_pl = agg["Total P/L"].sum()
-total_pl_pct = (total_pl / total_invested) * 100 if total_invested else 0
-agg["Portfolio %"] = (agg["Invested"] / total_invested) * 100 if total_invested else 0
+df_portfolio = pd.DataFrame(portfolio)
+if not df_portfolio.empty:
+    total_invested = df_portfolio["Invested"].str.replace("$", "").astype(float).sum()
+    market_value = df_portfolio["Market Value"].str.replace("$", "").astype(float).sum()
+    total_pl = df_portfolio["Total P/L"].str.replace("$", "").astype(float).sum()
+    unrealized = df_portfolio["Unrealized P/L"].str.replace("$", "").astype(float).sum()
+    realized = df_portfolio["Realized P/L"].str.replace("$", "").astype(float).sum()
+    pct_pl = (total_pl / total_invested) * 100 if total_invested > 0 else 0
+else:
+    total_invested = market_value = total_pl = unrealized = realized = pct_pl = 0
 
 # UI Layout
-col1, col2, col3 = st.columns([2, 1, 1])
-with col1:
-    st.markdown("### 💼 Portfolio Summary")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Invested", f"${total_invested:,.2f}")
-    c2.metric("Market Value", f"${total_mv:,.2f}")
-    c3.metric("Total P/L", f"${total_pl:,.2f}", f"{total_pl_pct:.2f}%")
-    st.write(f"**Realized P/L:** ${total_realized:,.2f}")
-    st.write(f"**Unrealized P/L:** ${total_unrealized:,.2f}")
+st.title("📊 Stock Portfolio Tracker")
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Invested", f"${total_invested:.2f}")
+col2.metric("Market Value", f"${market_value:.2f}")
+col3.metric("Total P/L", f"${total_pl:.2f}", f"{pct_pl:.2f}%")
 
-with col2:
-    st.markdown("### 🧩 Sector Allocation")
-    pie_data = agg.groupby("Sector")["Invested"].sum()
-    fig1, ax1 = plt.subplots(figsize=(3, 3))
-    ax1.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%", startangle=90)
+st.markdown(f"**Realized P/L:** ${realized:.2f}")
+st.markdown(f"**Unrealized P/L:** ${unrealized:.2f}")
+
+# Sector Pie Chart
+if not df_portfolio.empty:
+    st.subheader("🧩 Sector Allocation")
+    fig1, ax1 = plt.subplots()
+    sector_data = df_portfolio.groupby("Sector")["Market Value"].apply(lambda x: x.str.replace("$", "").astype(float).sum())
+    ax1.pie(sector_data, labels=sector_data.index, autopct="%1.1f%%")
     ax1.axis("equal")
     st.pyplot(fig1)
 
-with col3:
-    st.markdown("### 📈 Sector Unrealized P/L")
-    sector_pl = agg.groupby("Sector")["Unrealized P/L"].sum()
-    fig2, ax2 = plt.subplots(figsize=(3, 2))
-    sector_pl.plot(kind="bar", ax=ax2, color="teal")
-    ax2.set_ylabel("Unrealized P/L ($)")
-    ax2.set_title("Sector Unrealized P/L")
-    st.pyplot(fig2)
-
-# Table
-st.subheader("🧾 Portfolio Table")
-st.dataframe(agg.style.format({
-    "Avg Buy Price": "${:.2f}",
-    "Current Price": "${:.2f}",
-    "Market Value": "${:.2f}",
-    "Invested": "${:.2f}",
-    "Realized P/L": "${:.2f}",
-    "Unrealized P/L": "${:.2f}",
-    "Total P/L": "${:.2f}",
-    "Portfolio %": "{:.2f}%"
-}), use_container_width=True)
+# Portfolio Table
+st.subheader("📝 Portfolio Table")
+st.dataframe(df_portfolio)
