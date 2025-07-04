@@ -1,53 +1,62 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-from supabase import create_client, Client
+from postgrest import PostgrestClient
+import httpx
 
-# Connect to Supabase using Streamlit secrets
-url = st.secrets["SUPABASE_URL"]
-key = st.secrets["SUPABASE_KEY"]
-supabase: Client = create_client(url, key)
+# Supabase config (use your secrets)
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-st.title("📊 Personal Portfolio Tracker")
+# Connect to Supabase using Postgrest
+client = httpx.Client(headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"})
+postgrest = PostgrestClient(f"{SUPABASE_URL}/rest/v1", client=client)
 
-# Load existing data from Supabase
-@st.cache_data(ttl=300)
-def load_data():
-    response = supabase.table("portfolio").select("*").execute()
-    df = pd.DataFrame(response.data)
-    return df
+# Title
+st.title("📊 Stock Journal Tracker (with Supabase)")
 
-df = load_data()
+# Trade Entry
+st.subheader("Add Trade")
+with st.form("trade_form"):
+    instrument = st.selectbox("Instrument Type", ["Stock", "Crypto", "Forex"])
+    trade_name = st.text_input("Trade Name")
+    entry_price = st.number_input("Entry Price", min_value=0.0)
+    sell_price = st.number_input("Sell Price (0 if not sold)", min_value=0.0)
+    long_short = st.selectbox("Position Type", ["Long", "Short"])
+    strategy = st.text_input("Strategy Name")
+    confluence = st.text_area("Confluence / Notes")
+    action = st.selectbox("Buy or Sell", ["Buy", "Sell"])
+    submitted = st.form_submit_button("Add Trade")
 
-# Form to add new trade
-with st.form("add_trade"):
-    st.subheader("Add Trade")
-    ticker = st.text_input("Ticker")
-    date = st.date_input("Trade Date")
-    price = st.number_input("Price", min_value=0.0)
-    shares = st.number_input("Shares", min_value=0.01, step=0.01)
-    sector = st.selectbox("Sector", ["Technology", "Healthcare", "Financials", "Energy", "Consumer Goods", "Materials", "Other"])
-    trade_type = st.selectbox("Type", ["Buy", "Sell"])
-    submitted = st.form_submit_button("Submit")
-    if submitted and ticker:
-        new_data = {
-            "ticker": ticker.upper(),
-            "date": str(date),
-            "price": price,
-            "shares": shares,
-            "sector": sector,
-            "type": trade_type
-        }
-        supabase.table("portfolio").insert(new_data).execute()
-        st.success(f"Trade for {ticker.upper()} added.")
-        st.experimental_rerun()
+    if submitted:
+        result = postgrest.table("trades").insert({
+            "instrument": instrument,
+            "trade_name": trade_name,
+            "entry_price": entry_price,
+            "sell_price": sell_price,
+            "long_short": long_short,
+            "strategy": strategy,
+            "confluence": confluence,
+            "action": action
+        }).execute()
+        st.success("Trade added!")
 
-# Display current data
-st.subheader("Current Portfolio Data")
-st.dataframe(df)
+# Display Table
+st.subheader("📋 Trade History")
+res = postgrest.table("trades").select("*").execute()
+df = pd.DataFrame(res.data)
 
-# Show sector breakdown
-st.subheader("Sector Summary")
 if not df.empty:
-    summary = df.groupby("sector")["shares"].sum().reset_index()
-    st.bar_chart(summary.set_index("sector"))
+    df["realized_gain"] = (df["sell_price"] - df["entry_price"]).round(2)
+    df["unrealized_gain"] = df.apply(
+        lambda row: yf.Ticker(row["trade_name"]).history(period="1d")["Close"].iloc[-1] - row["entry_price"]
+        if row["sell_price"] == 0 else 0,
+        axis=1
+    ).round(2)
+    st.dataframe(df)
+
+# Bar chart of gains
+if not df.empty:
+    st.subheader("📈 Gains Overview")
+    gain_chart = df[["trade_name", "realized_gain", "unrealized_gain"]].set_index("trade_name")
+    st.bar_chart(gain_chart)
