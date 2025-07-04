@@ -1,108 +1,119 @@
+
 import streamlit as st
 import pandas as pd
+import yfinance as yf
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
-import matplotlib.pyplot as plt
-
-st.set_page_config(page_title="Stock Portfolio Tracker", layout="wide")
+import plotly.express as px
 
 # Google Sheets setup
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials_dict = st.secrets["gcp_service_account"]
+credentials_dict = {
+  "type": "service_account",
+  "project_id": "investment-tracker-464915",
+  "private_key_id": "25f6098232b8",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQD...<TRUNCATED FOR SECURITY>...\n-----END PRIVATE KEY-----\n",
+  "client_email": "streamlit-sheets-access@investment-tracker-464915.iam.gserviceaccount.com",
+  "client_id": "114755555246802256347",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/streamlit-sheets-access%40investment-tracker-464915.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
 client = gspread.authorize(credentials)
+sheet = client.open("StockPortfolioData").sheet1
 
-sheet = client.open("StockPortfolioData").worksheet("Portfolio")
+# Load data
 data = pd.DataFrame(sheet.get_all_records())
 
-# Sidebar - Add New Trade
-st.sidebar.header("📥 Add Trade")
-with st.sidebar.form("trade_form"):
-    ticker = st.text_input("Ticker").upper()
-    date = st.date_input("Date", value=datetime.today())
-    action = st.selectbox("Action", ["Buy", "Sell"])
-    price = st.number_input("Price", min_value=0.0, format="%.2f")
-    shares = st.number_input("Shares", min_value=1, step=1)
-    sector = st.selectbox("Sector", ["Technology", "Healthcare", "Financials", "Energy", "Consumer Goods", "Materials", "Other"])
-    submitted = st.form_submit_button("Add Trade")
-
-    if submitted and ticker and price > 0:
-        new_row = [ticker, str(date), action, price if action == "Buy" else "", shares, price if action == "Sell" else "", sector]
-        sheet.append_row(new_row)
-        st.success("Trade added successfully!")
-        st.experimental_rerun()
-
-# Process Data
-data["Buy Price"] = pd.to_numeric(data["Buy Price"], errors="coerce")
-data["Sell Price"] = pd.to_numeric(data["Sell Price"], errors="coerce")
-data["Shares"] = pd.to_numeric(data["Shares"], errors="coerce")
-data["Remaining Shares"] = 0
-
-portfolio = []
-
-for ticker in data["Ticker"].unique():
-    df_ticker = data[data["Ticker"] == ticker].copy()
-    buys = df_ticker[df_ticker["Action"] == "Buy"]
-    sells = df_ticker[df_ticker["Action"] == "Sell"]
-    total_bought = buys["Shares"].sum()
-    total_sold = sells["Shares"].sum()
-    remaining = total_bought - total_sold
-    avg_buy = (buys["Buy Price"] * buys["Shares"]).sum() / total_bought if total_bought > 0 else 0
-    sector = buys["Sector"].iloc[0] if not buys.empty else "Other"
-
-    current_price = 33.51 if ticker == "SLV" else avg_buy * 1.1  # Stub price
-    invested = avg_buy * total_bought
-    market_value = current_price * remaining
-    realized_pl = (sells["Sell Price"] * sells["Shares"]).sum() - avg_buy * total_sold
-    unrealized_pl = market_value - avg_buy * remaining
-    total_pl = realized_pl + unrealized_pl
-
-    portfolio.append({
-        "Ticker": ticker,
-        "Total Shares": total_bought,
-        "Sold Shares": total_sold,
-        "Remaining Shares": remaining,
-        "Avg Buy Price": f"${avg_buy:.2f}",
-        "Current Price": f"${current_price:.2f}",
-        "Invested": f"${avg_buy * total_bought:.2f}",
-        "Market Value": f"${market_value:.2f}",
-        "Realized P/L": f"${realized_pl:.2f}",
-        "Unrealized P/L": f"${unrealized_pl:.2f}",
-        "Total P/L": f"${total_pl:.2f}",
-        "Sector": sector
-    })
-
-df_portfolio = pd.DataFrame(portfolio)
-if not df_portfolio.empty:
-    total_invested = df_portfolio["Invested"].str.replace("$", "").astype(float).sum()
-    market_value = df_portfolio["Market Value"].str.replace("$", "").astype(float).sum()
-    total_pl = df_portfolio["Total P/L"].str.replace("$", "").astype(float).sum()
-    unrealized = df_portfolio["Unrealized P/L"].str.replace("$", "").astype(float).sum()
-    realized = df_portfolio["Realized P/L"].str.replace("$", "").astype(float).sum()
-    pct_pl = (total_pl / total_invested) * 100 if total_invested > 0 else 0
-else:
-    total_invested = market_value = total_pl = unrealized = realized = pct_pl = 0
-
-# UI Layout
+st.set_page_config(page_title="Stock Portfolio Tracker", layout="wide")
 st.title("📊 Stock Portfolio Tracker")
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Invested", f"${total_invested:.2f}")
-col2.metric("Market Value", f"${market_value:.2f}")
-col3.metric("Total P/L", f"${total_pl:.2f}", f"{pct_pl:.2f}%")
 
-st.markdown(f"**Realized P/L:** ${realized:.2f}")
-st.markdown(f"**Unrealized P/L:** ${unrealized:.2f}")
+# Sidebar form
+with st.sidebar.form("trade_form"):
+    st.subheader("💹 Add Trade")
+    ticker = st.text_input("Ticker").upper()
+    date = st.date_input("Date", datetime.today())
+    action = st.selectbox("Action", ["Buy", "Sell"])
+    price = st.number_input("Price", min_value=0.0, step=0.01)
+    shares = st.number_input("Shares", min_value=1, step=1)
+    sector = st.selectbox("Sector", ["Technology", "Healthcare", "Financials", "Energy", "Consumer", "Utilities", "Other"])
+    submit = st.form_submit_button("Add Trade")
 
-# Sector Pie Chart
-if not df_portfolio.empty:
-    st.subheader("🧩 Sector Allocation")
-    fig1, ax1 = plt.subplots()
-    sector_data = df_portfolio.groupby("Sector")["Market Value"].apply(lambda x: x.str.replace("$", "").astype(float).sum())
-    ax1.pie(sector_data, labels=sector_data.index, autopct="%1.1f%%")
-    ax1.axis("equal")
-    st.pyplot(fig1)
+    if submit and ticker:
+        sheet.append_row([
+            ticker, str(date), action, price if action == "Buy" else "",
+            shares, price if action == "Sell" else "", sector
+        ])
+        st.success("Trade added! Please refresh.")
 
-# Portfolio Table
-st.subheader("📝 Portfolio Table")
-st.dataframe(df_portfolio)
+# Process data
+if not data.empty:
+    buys = data[data["Action"] == "Buy"].copy()
+    sells = data[data["Action"] == "Sell"].copy()
+    merged = buys.groupby("Ticker").agg({
+        "Buy Price": "mean",
+        "Shares": "sum",
+        "Sector": "first"
+    }).rename(columns={"Buy Price": "Avg Buy Price", "Shares": "Total Shares"}).reset_index()
+
+    sell_agg = sells.groupby("Ticker")["Shares"].sum().reset_index().rename(columns={"Shares": "Sold Shares"})
+    merged = pd.merge(merged, sell_agg, on="Ticker", how="left").fillna(0)
+    merged["Remaining Shares"] = merged["Total Shares"] - merged["Sold Shares"]
+    merged = merged[merged["Remaining Shares"] > 0]
+
+    # Live price & calculations
+    def get_price(ticker):
+        try:
+            return yf.Ticker(ticker).info["regularMarketPrice"]
+        except:
+            return 0
+
+    merged["Current Price"] = merged["Ticker"].apply(get_price)
+    merged["Invested"] = merged["Avg Buy Price"] * merged["Remaining Shares"]
+    merged["Market Value"] = merged["Current Price"] * merged["Remaining Shares"]
+    merged["Realized P/L"] = sells.groupby("Ticker").apply(
+        lambda g: (g["Sell Price"] * g["Shares"]).sum() - buys.loc[buys["Ticker"] == g.name, "Buy Price"].mean() * g["Shares"].sum()
+    ).reset_index(drop=True).fillna(0)
+    merged["Unrealized P/L"] = merged["Market Value"] - merged["Invested"]
+    merged["Total P/L"] = merged["Realized P/L"] + merged["Unrealized P/L"]
+    total_invested = merged["Invested"].sum()
+    merged["Portfolio %"] = merged["Market Value"] / merged["Market Value"].sum()
+
+    # Summary
+    st.header("📂 Portfolio Summary")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Invested", f"${total_invested:,.2f}")
+    col2.metric("Market Value", f"${merged['Market Value'].sum():,.2f}")
+    col3.metric("Total P/L", f"${merged['Total P/L'].sum():,.2f}", f"{(merged['Total P/L'].sum() / total_invested) * 100:.2f}%")
+
+    # Realized & Unrealized
+    st.markdown(f"**Realized P/L:** ${merged['Realized P/L'].sum():.2f}")
+    st.markdown(f"**Unrealized P/L:** ${merged['Unrealized P/L'].sum():.2f}")
+
+    # Charts
+    st.header("🧩 Sector Allocation")
+    fig1 = px.pie(merged, values="Portfolio %", names="Sector", title="Sector Allocation")
+    st.plotly_chart(fig1, use_container_width=True)
+
+    st.header("📈 Sector Unrealized P/L")
+    fig2 = px.bar(merged.groupby("Sector")["Unrealized P/L"].sum().reset_index(), x="Sector", y="Unrealized P/L")
+    st.plotly_chart(fig2, use_container_width=True)
+
+    # Table
+    st.header("🗒 Portfolio Table")
+    st.dataframe(merged.style.format({
+        "Avg Buy Price": "${:.2f}",
+        "Current Price": "${:.2f}",
+        "Invested": "${:.2f}",
+        "Market Value": "${:.2f}",
+        "Realized P/L": "${:.2f}",
+        "Unrealized P/L": "${:.2f}",
+        "Total P/L": "${:.2f}",
+        "Portfolio %": "{:.2%}"
+    }), use_container_width=True)
+else:
+    st.warning("No data yet. Add your first trade.")
