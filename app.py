@@ -7,31 +7,27 @@ import datetime
 import matplotlib.pyplot as plt
 
 # Google Sheets setup
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials_dict = {
-    "type": "service_account",
-    "project_id": "investment-tracker-464915",
-    "private_key_id": "25f6098232b8",
-    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQD...<TRUNCATED FOR SECURITY>...\n-----END PRIVATE KEY-----\n",
-    "client_email": "streamlit-sheets-access@investment-tracker-464915.iam.gserviceaccount.com",
-    "client_id": "114755555246802256347",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/streamlit-sheets-access%40investment-tracker-464915.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
-}
-credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
-client = gspread.authorize(credentials)
-sheet = client.open("StockPortfolioData").sheet1
+try:
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+    client = gspread.authorize(credentials)
+    sheet = client.open("StockPortfolioData").sheet1
+except Exception as e:
+    st.error(f"Failed to connect to Google Sheets: {e}")
+    st.stop()
 
 # Load data
 @st.cache_data
 def load_data():
-    data = pd.DataFrame(sheet.get_all_records())
-    if not data.empty:
-        data['Date'] = pd.to_datetime(data['Date'])
-    return data
+    try:
+        data = pd.DataFrame(sheet.get_all_records())
+        if not data.empty:
+            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+            data = data.dropna(subset=['Date'])  # Remove rows with invalid dates
+        return data
+    except Exception as e:
+        st.error(f"Error loading data from Google Sheets: {e}")
+        return pd.DataFrame(columns=['Ticker', 'Date', 'Action', 'Buy Price', 'Shares', 'Sell Price', 'Sector'])
 
 data = load_data()
 
@@ -54,11 +50,14 @@ with st.form("Add Entry"):
 
     if submit:
         if ticker and shares > 0 and price > 0:
-            buy_price = price if action == "Buy" else ""
-            sell_price = price if action == "Sell" else ""
-            sheet.append_row([ticker, str(date), action, buy_price, shares, sell_price, sector])
-            st.success(f"Added {action} trade for {shares} shares of {ticker}!")
-            st.experimental_rerun()  # Refresh to reload data
+            try:
+                buy_price = price if action == "Buy" else ""
+                sell_price = price if action == "Sell" else ""
+                sheet.append_row([ticker, str(date), action, buy_price, shares, sell_price, sector])
+                st.success(f"Added {action} trade for {shares} shares of {ticker}!")
+                st.experimental_rerun()  # Refresh to reload data
+            except Exception as e:
+                st.error(f"Error adding trade: {e}")
         else:
             st.error("Please fill in all fields with valid values.")
 
@@ -72,8 +71,8 @@ if not data.empty:
     agg = buys.groupby('Ticker').apply(
         lambda x: pd.Series({
             'Total Shares': x['Shares'].sum(),
-            'Total Invested': (x['Shares'] * x['Buy Price'].astype(float)).sum(),
-            'Avg Buy Price': (x['Shares'] * x['Buy Price'].astype(float)).sum() / x['Shares'].sum() if x['Shares'].sum() > 0 else 0,
+            'Total Invested': (x['Shares'] * x['Buy Price'].astype(float, errors='ignore')).sum(),
+            'Avg Buy Price': (x['Shares'] * x['Buy Price'].astype(float, errors='ignore')).sum() / x['Shares'].sum() if x['Shares'].sum() > 0 else 0,
             'Sector': x['Sector'].iloc[0]
         })
     ).reset_index()
@@ -81,7 +80,7 @@ if not data.empty:
     # Aggregate sells
     sell_agg = sells.groupby('Ticker').agg({
         'Shares': 'sum',
-        'Sell Price': lambda x: (x.astype(float) * sells.loc[sells['Ticker'] == x.name, 'Shares']).sum() / sells.loc[sells['Ticker'] == x.name, 'Shares'].sum() if sells.loc[sells['Ticker'] == x.name, 'Shares'].sum() > 0 else 0
+        'Sell Price': lambda x: (x.astype(float, errors='ignore') * sells.loc[sells['Ticker'] == x.name, 'Shares']).sum() / sells.loc[sells['Ticker'] == x.name, 'Shares'].sum() if sells.loc[sells['Ticker'] == x.name, 'Shares'].sum() > 0 else 0
     }).rename(columns={'Shares': 'Sold Shares', 'Sell Price': 'Avg Sell Price'}).reset_index()
 
     # Merge buy and sell data
@@ -170,22 +169,28 @@ if not data.empty:
 
     col_a, col_b = st.columns(2)
     if col_a.button("✅ Update Trade"):
-        new_buy_price = new_price if new_action == "Buy" else ""
-        new_sell_price = new_price if new_action == "Sell" else ""
-        sheet.update_cell(selected_index + 2, 1, new_ticker.upper())
-        sheet.update_cell(selected_index + 2, 2, str(new_date))
-        sheet.update_cell(selected_index + 2, 3, new_action)
-        sheet.update_cell(selected_index + 2, 4, new_buy_price)
-        sheet.update_cell(selected_index + 2, 5, new_shares)
-        sheet.update_cell(selected_index + 2, 6, new_sell_price)
-        sheet.update_cell(selected_index + 2, 7, new_sector)
-        st.success("Trade updated!")
-        st.experimental_rerun()
+        try:
+            new_buy_price = new_price if new_action == "Buy" else ""
+            new_sell_price = new_price if new_action == "Sell" else ""
+            sheet.update_cell(selected_index + 2, 1, new_ticker.upper())
+            sheet.update_cell(selected_index + 2, 2, str(new_date))
+            sheet.update_cell(selected_index + 2, 3, new_action)
+            sheet.update_cell(selected_index + 2, 4, new_buy_price)
+            sheet.update_cell(selected_index + 2, 5, new_shares)
+            sheet.update_cell(selected_index + 2, 6, new_sell_price)
+            sheet.update_cell(selected_index + 2, 7, new_sector)
+            st.success("Trade updated!")
+            st.experimental_rerun()
+        except Exception as e:
+            st.error(f"Error updating trade: {e}")
 
     if col_b.button("🗑️ Delete Trade"):
-        sheet.delete_rows(selected_index + 2)
-        st.warning("Trade deleted!")
-        st.experimental_rerun()
+        try:
+            sheet.delete_rows(selected_index + 2)
+            st.warning("Trade deleted!")
+            st.experimental_rerun()
+        except Exception as e:
+            st.error(f"Error deleting trade: {e}")
 
 else:
     st.info("Add trades to get started.")
