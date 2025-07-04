@@ -1,20 +1,18 @@
 import streamlit as st
 import pandas as pd
 import datetime
-from supabase import create_client, Client  # ✅ correct for supabase-py
-import os
+import yfinance as yf
+from supabase import create_client, Client
 
-# --- Supabase Connection ---
-rl = st.secrets["SUPABASE_URL"]
+# --- Supabase Setup ---
+url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
 
-# --- Helper Functions ---
+# --- Functions ---
 def get_user_portfolio(user_email):
-    response = supabase.table("portfolios").select("*").eq("user_email", user_email).execute()
-    if response.data:
-        return pd.DataFrame(response.data)
-    return pd.DataFrame(columns=["ticker", "transaction_type", "price", "shares", "date", "sector"])
+    res = supabase.table("portfolios").select("*").eq("user_email", user_email).execute()
+    return pd.DataFrame(res.data) if res.data else pd.DataFrame(columns=["ticker", "transaction_type", "price", "shares", "date", "sector"])
 
 def insert_transaction(data):
     supabase.table("portfolios").insert(data).execute()
@@ -24,28 +22,22 @@ def calculate_portfolio(df):
     sell_df = df[df["transaction_type"] == "SELL"]
 
     summary = []
-    tickers = buy_df["ticker"].unique()
-    for ticker in tickers:
+    for ticker in buy_df["ticker"].unique():
         buys = buy_df[buy_df["ticker"] == ticker]
         sells = sell_df[sell_df["ticker"] == ticker]
 
         total_bought = buys["shares"].sum()
         total_sold = sells["shares"].sum()
-        avg_price = (buys["shares"] * buys["price"]).sum() / total_bought if total_bought > 0 else 0
+        avg_price = (buys["shares"] * buys["price"]).sum() / total_bought if total_bought else 0
         net_shares = total_bought - total_sold
-
         proceeds = (sells["shares"] * sells["price"]).sum()
-        cost_basis_sold = avg_price * total_sold
-        realized_gain = proceeds - cost_basis_sold
-        unrealized_gain = 0
-        current_price = 0
+        realized = proceeds - (avg_price * total_sold)
 
-        # Get latest price
+        current_price, unrealized = 0, 0
         try:
-            import yfinance as yf
-            data = yf.Ticker(ticker).history(period="1d")
-            current_price = data["Close"].iloc[-1]
-            unrealized_gain = (current_price - avg_price) * net_shares
+            hist = yf.Ticker(ticker).history(period="1d")
+            current_price = hist["Close"].iloc[-1]
+            unrealized = (current_price - avg_price) * net_shares
         except:
             pass
 
@@ -54,31 +46,31 @@ def calculate_portfolio(df):
             "Shares Held": net_shares,
             "Avg Buy Price": round(avg_price, 2),
             "Current Price": round(current_price, 2),
-            "Unrealized Gain ($)": round(unrealized_gain, 2),
-            "Realized Gain ($)": round(realized_gain, 2)
+            "Unrealized Gain ($)": round(unrealized, 2),
+            "Realized Gain ($)": round(realized, 2)
         })
 
     return pd.DataFrame(summary)
 
-# --- App UI ---
-st.title("📊 Multi-User Stock Portfolio Tracker")
+# --- UI ---
+st.title("📊 Stock Portfolio Tracker (Multi-User with Supabase)")
 
-user_email = st.text_input("Enter your email to login:", value="", placeholder="your@email.com")
+user_email = st.text_input("Enter your email to continue:")
 
 if user_email:
     st.markdown("### ➕ Add Transaction")
-    with st.form("add_trade"):
+    with st.form("entry_form"):
         col1, col2 = st.columns(2)
         ticker = col1.text_input("Ticker").upper().strip()
-        txn_type = col2.selectbox("Transaction Type", ["BUY", "SELL"])
+        txn_type = col2.selectbox("Type", ["BUY", "SELL"])
         col3, col4 = st.columns(2)
         price = col3.number_input("Price", min_value=0.0)
         shares = col4.number_input("Shares", min_value=0.0, format="%.4f")
         date = st.date_input("Date", datetime.date.today())
-        sector = st.text_input("Sector (only for BUY)", value="") if txn_type == "BUY" else ""
-        submit = st.form_submit_button("Save Transaction")
+        sector = st.text_input("Sector (for BUY only):") if txn_type == "BUY" else ""
+        submitted = st.form_submit_button("Submit")
 
-        if submit and ticker and shares > 0 and price > 0:
+        if submitted and ticker and shares > 0 and price > 0:
             insert_transaction({
                 "user_email": user_email,
                 "ticker": ticker,
@@ -88,19 +80,19 @@ if user_email:
                 "date": str(date),
                 "sector": sector
             })
-            st.success(f"{txn_type} transaction added for {ticker}.")
+            st.success(f"{txn_type} for {shares} {ticker} at ${price} saved!")
 
-    # --- Load Portfolio ---
     df = get_user_portfolio(user_email)
     if not df.empty:
+        st.markdown("### 📈 Portfolio Overview")
         summary = calculate_portfolio(df)
-        st.subheader("📈 Portfolio Summary")
         st.dataframe(summary)
 
-        total_unrealized = summary["Unrealized Gain ($)"].sum()
         total_realized = summary["Realized Gain ($)"].sum()
+        total_unrealized = summary["Unrealized Gain ($)"].sum()
+
         col1, col2 = st.columns(2)
-        col1.metric("Unrealized Gain", f"${total_unrealized:,.2f}")
-        col2.metric("Realized Gain", f"${total_realized:,.2f}")
+        col1.metric("Realized Gain", f"${total_realized:,.2f}")
+        col2.metric("Unrealized Gain", f"${total_unrealized:,.2f}")
     else:
-        st.info("No transactions found.")
+        st.info("No transactions found for this email.")
