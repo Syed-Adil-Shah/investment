@@ -1,5 +1,6 @@
 
-# ✅ This version includes full local features + Google Sheets integration using Streamlit secrets
+# ✅ This version includes full features + Google Sheets integration using Streamlit secrets
+# and clears the sheet before updating to ensure full sync
 
 import streamlit as st
 import pandas as pd
@@ -26,7 +27,7 @@ sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 try:
     df = get_as_dataframe(sheet, evaluate_formulas=True).dropna(how='all')
     df['Date'] = pd.to_datetime(df['Date'])
-except Exception as e:
+except Exception:
     df = pd.DataFrame(columns=['Ticker', 'Date', 'Buy Price', 'Shares', 'Sector'])
 
 st.title("📊 Stock Portfolio Tracker")
@@ -53,6 +54,7 @@ with st.form("Add Entry"):
                 'Sector': [sector]
             })
             df = pd.concat([df, new_row], ignore_index=True)
+            sheet.clear()
             set_with_dataframe(sheet, df)
             st.success(f"Added {shares} shares of {ticker}!")
         else:
@@ -150,6 +152,7 @@ if not df.empty:
         df.at[selected_index, 'Shares'] = new_shares
         df.at[selected_index, 'Sector'] = new_sector
         df.drop(columns=['label'], inplace=True)
+        sheet.clear()
         set_with_dataframe(sheet, df)
         st.success("Trade updated!")
 
@@ -157,6 +160,7 @@ if not df.empty:
         df.drop(index=selected_index, inplace=True)
         df.drop(columns=['label'], inplace=True)
         df.reset_index(drop=True, inplace=True)
+        sheet.clear()
         set_with_dataframe(sheet, df)
         st.warning("Trade deleted!")
 
