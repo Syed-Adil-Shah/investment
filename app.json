@@ -1,13 +1,1 @@
-{
-  "type": "service_account",
-  "project_id": "investment-tracker-464915",
-  "private_key_id": "25f6098232b82bb3c24a21bae76817f18b6f8682",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQD7BebDWxwkKLBE\noUdhgXxSL2/Oqc7588K3Qdjcz7qGT2NtDm8O7itYoA5n/PDBZfttUFx1weZXv9ND\ninEKvDOfxX1IwfoTk2x7akvFD6L3X7WjZg9i5UF3Jpp3qgOMDNoNWHyAqBb5m36k\nHIcjU6k7cZTkMz86gQ+6f9l39VgPD62FLb58sRQwQxdTn6tPBgXWaIwIH76OQcMn\nNag2XQeAucTUvTh+cwIQsv4wUyijN6b+EFb+sF67otXl74xj/aIQzavIcdNLKiO/\nL2TRGU6CBAMv3mZVtuCiexFLvUwtU5wTdDQyFdK74RY4heOj1a4cGTe8x3Uls+7B\nKeuiwBK3AgMBAAECggEAHO4ML12Tu7MYxYAU2u7yZgJjj1zQpsvqF/a1yJUEOTBz\nFAGC2SSnyDoCDwf+sztOo8WMMmIbaueHsJQG/Sa9iF9ZVgZNDO6DpSGWA+sObBYS\nt/cuNMaZKeNAECR+7igZBUq6ZpV4uGGsUbub831T1q77auVhFxwCtQrBBGs5L9rz\nRLHXGzvKPm+O9H7tyeJr2UJCcTJEUHVigg0yreZvLP5u4BWWnUCwiG7lLYEnyhbb\nCxfvm+kZnGfmw2oCZSujqgAMVsrge30MnGn9UUSZN5KOu5ggTrh+wanGlRJuHDfA\nDwjH6yD8rLg86O3kvWn3f/iAZUK82Vfwapc7UYY0GQKBgQD/c1UXJ0P3MKYOoJTI\nOe6ng1BOPQ1i1iFdacDyYRXLx91y7pJ1lGQFgUyPUpt7dBY6X/Rl+pKNuEdMMT5+\nkH/imJcDV4017UKy6bbmWEQ/9dRdF3wZmSOVy4ogGiUThXrQsSbiupCXQhdeWpHJ\nKk0oUg73puEb88JRtAaflIkRswKBgQD7kCGIN3e0sxZ/BVc0zoRp9gTDN77CQeGX\n41vxakWJOQbCaLXWgqNhhpK+14ma1tllOwEbjtqNrs8cLyhd4JKzLagoKIW8khUg\nUgKWJ7F8W5cMamC+dKAfNoDy3BSA9o2TIKe28rGbIk+cgk+yGvISJUg6zmEbrNDq\nAZeOU4KQ7QKBgQDdy/76rn4lt5jHJIhqXVqpGav1cq8XvQKVQAhmqwMov624aArE\nioZZ/U1DOB+GDmJqZvwmO21aHcHSFwPDEqXnUkP0g+U5CHucKq9CyyrfOgwclBKN\ni1jJbEPO4cSFcaUUZGx1+jUnEByIMS1ZtB/wPWd/geb8xSZYmG4Tyv1EXwKBgQCt\n6waTwy1aW1oZNRsGYiS/kRvXz2ltqdiKhuBg9kTeyvM2YugcRrMn0L8Re7ghuZoQ\n14s7fzbwL0P2y0+QH5usjsssAF/9b811S92H7CdTv4qdRcpewgiVq7vYq3jtdAeL\nCU+KNx29ECqUHK92hhSHoQjfxyDx3jeNIM6j0m55PQKBgDnRfBnEXmx0KHp68pcE\nWL+TIcml8stwgAioJkIY+BtyZQF0cL4wIEVAiazpBlEuNYPU5S3R3M1QqqouMw/l\nnFjmOGQ8Efhc4acNw7XY+ADE6O5Cdpp5geN6q4jqjFLc2uZ5FUO/R2iArQRyr3cl\n7n1rdwxdy0benlc+2KxQp6Z7\n-----END PRIVATE KEY-----\n",
-  "client_email": "streamlit-sheets-access@investment-tracker-464915.iam.gserviceaccount.com",
-  "client_id": "103027177439962408061",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/streamlit-sheets-access%40investment-tracker-464915.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-}
+
