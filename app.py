@@ -7,11 +7,10 @@ import gspread
 from gspread_dataframe import get_as_dataframe, set_with_dataframe
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-from streamlit.runtime.secrets import secrets
 
 # --- Google Sheets Setup using Streamlit Secrets ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials_dict = secrets["gcp_service_account"]
+credentials_dict = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
 client = gspread.authorize(creds)
 spreadsheet = client.open_by_key("12Aje52kDt7nh0uk4aLpPyaYiVMivQrornyuwUP3bJew")
