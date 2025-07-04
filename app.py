@@ -1,4 +1,6 @@
 
+# ✅ This version includes full local features + Google Sheets integration using Streamlit secrets
+
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -123,5 +125,40 @@ if not df.empty:
         'P/L (%)': '{:.2f}%',
         'Portfolio %': '{:.2f}%'
     }), use_container_width=True)
+
+    # === Editable Trade Section ===
+    st.markdown("---")
+    st.markdown("### ✏️ Edit or Delete a Trade")
+    df['label'] = df.apply(lambda row: f"{row['Ticker']} - {row['Shares']} @ ${row['Buy Price']} on {pd.to_datetime(row['Date']).date()}", axis=1)
+    selection = st.selectbox("Select Trade", df['label'].tolist())
+    selected_index = df[df['label'] == selection].index[0]
+
+    trade = df.loc[selected_index]
+    edit_col1, edit_col2 = st.columns(2)
+    new_ticker = edit_col1.text_input("Edit Ticker", trade['Ticker'])
+    new_date = edit_col2.date_input("Edit Date", pd.to_datetime(trade['Date']))
+    edit_col3, edit_col4, edit_col5 = st.columns(3)
+    new_price = edit_col3.number_input("Edit Buy Price", value=float(trade['Buy Price']))
+    new_shares = edit_col4.number_input("Edit Shares", value=float(trade['Shares']), format="%.6f")
+    new_sector = edit_col5.selectbox("Edit Sector", sector_options, index=sector_options.index(trade['Sector']) if trade['Sector'] in sector_options else 0)
+
+    col_a, col_b = st.columns(2)
+    if col_a.button("✅ Update Trade"):
+        df.at[selected_index, 'Ticker'] = new_ticker.upper()
+        df.at[selected_index, 'Date'] = new_date
+        df.at[selected_index, 'Buy Price'] = new_price
+        df.at[selected_index, 'Shares'] = new_shares
+        df.at[selected_index, 'Sector'] = new_sector
+        df.drop(columns=['label'], inplace=True)
+        set_with_dataframe(sheet, df)
+        st.success("Trade updated!")
+
+    if col_b.button("🗑️ Delete Trade"):
+        df.drop(index=selected_index, inplace=True)
+        df.drop(columns=['label'], inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        set_with_dataframe(sheet, df)
+        st.warning("Trade deleted!")
+
 else:
     st.info("Add trades to get started.")
