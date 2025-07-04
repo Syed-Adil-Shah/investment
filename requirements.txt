@@ -1,4 +1,4 @@
 streamlit
 pandas
-yfinance
-matplotlib
+gspread
+oauth2client
