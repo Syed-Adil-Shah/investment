@@ -1,5 +1,4 @@
-supabase-py
 streamlit
 pandas
 yfinance
-matplotlib
+supabase-py
