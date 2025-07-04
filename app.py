@@ -1,89 +1,76 @@
 
+# ✅ This version includes full features + Google Sheets integration using Streamlit secrets
+# and clears the sheet before updating to ensure full sync
+
 import streamlit as st
 import pandas as pd
 import yfinance as yf
 import datetime
+import matplotlib.pyplot as plt
 import gspread
-from google.oauth2.service_account import Credentials
 from gspread_dataframe import get_as_dataframe, set_with_dataframe
+from oauth2client.service_account import ServiceAccountCredentials
 
-# Set page config
+# === CONFIG ===
 st.set_page_config(page_title="Stock Portfolio Tracker", layout="wide", page_icon="📈")
+SHEET_ID = "12Aje52kDt7nh0uk4aLpPyaYiVMivQrornyuwUP3bJew"
+SHEET_NAME = "Sheet1"
 
-# Google Sheets Setup
+# === AUTHENTICATION ===
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
-gc = gspread.authorize(credentials)
-spreadsheet = gc.open_by_key("12Aje52kDt7nh0uk4aLpPyaYiVMivQrornyuwUP3bJew")
-worksheet = spreadsheet.get_worksheet(0)
+credentials_dict = st.secrets["gcp_service_account"]
+creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+client = gspread.authorize(creds)
+sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
-# Load data from sheet
-df = get_as_dataframe(worksheet, evaluate_formulas=True, dtype=str)
-df = df.dropna(how="all")  # Remove empty rows
-if not df.empty:
+# === LOAD DATA ===
+try:
+    df = get_as_dataframe(sheet, evaluate_formulas=True).dropna(how='all')
     df['Date'] = pd.to_datetime(df['Date'])
-    df['Shares'] = df['Shares'].astype(float)
-    df['Buy Price'] = pd.to_numeric(df.get('Buy Price', 0), errors='coerce').fillna(0)
-    df['Sell Price'] = pd.to_numeric(df.get('Sell Price', 0), errors='coerce').fillna(0)
+except Exception:
+    df = pd.DataFrame(columns=['Ticker', 'Date', 'Buy Price', 'Shares', 'Sector'])
 
-# --- Title
 st.title("📊 Stock Portfolio Tracker")
 
-# --- Add Trade Form
-with st.form("add_trade_form"):
+# === TRADE ENTRY ===
+with st.form("Add Entry"):
     col1, col2 = st.columns(2)
-    action = col1.selectbox("Type", ["Buy", "Sell"])
-    ticker = col2.text_input("Ticker").upper().strip()
+    ticker = col1.text_input("Stock Ticker").strip().upper()
+    date = col2.date_input("Buy Date", datetime.date.today())
+    col3, col4, col5 = st.columns(3)
+    price = col3.number_input("Buy Price ($)", min_value=0.0)
+    shares = col4.number_input("Shares", min_value=0.0, format="%.6f")
+    sector_options = ['Technology', 'Healthcare', 'Financials', 'Energy', 'Utilities', 'Consumer Goods', 'Industrials', 'Materials', 'Other']
+    sector = col5.selectbox("Sector", sector_options)
+    submit = st.form_submit_button("💾 Add Trade")
 
-    col3, col4 = st.columns(2)
-    buy_price = col3.number_input("Buy Price", min_value=0.0)
-    sell_price = col4.number_input("Sell Price", min_value=0.0)
+    if submit:
+        if ticker and shares > 0 and price > 0:
+            new_row = pd.DataFrame({
+                'Ticker': [ticker],
+                'Date': [pd.to_datetime(date)],
+                'Buy Price': [price],
+                'Shares': [shares],
+                'Sector': [sector]
+            })
+            df = pd.concat([df, new_row], ignore_index=True)
+            sheet.clear()
+            set_with_dataframe(sheet, df)
+            st.success(f"Added {shares} shares of {ticker}!")
+        else:
+            st.error("Please fill in all fields with valid values.")
 
-    shares = st.number_input("Shares", min_value=0.0)
-    date = st.date_input("Date", datetime.date.today())
-    sector = st.selectbox("Sector", ['Technology', 'Healthcare', 'Financials', 'Energy', 'Utilities', 'Consumer Goods', 'Industrials', 'Materials', 'Other'])
-
-    submitted = st.form_submit_button("➕ Add Trade")
-
-    if submitted and ticker and shares > 0:
-        new_entry = pd.DataFrame({
-            'Type': [action],
-            'Ticker': [ticker],
-            'Date': [pd.to_datetime(date)],
-            'Buy Price': [buy_price],
-            'Sell Price': [sell_price],
-            'Shares': [shares],
-            'Sector': [sector]
-        })
-        df = pd.concat([df, new_entry], ignore_index=True)
-        worksheet.clear()
-        set_with_dataframe(worksheet, df)
-        st.success(f"{action} trade added for {ticker}.")
-
-# --- Portfolio Summary
+# === PORTFOLIO LOGIC ===
 if not df.empty:
-    buys = df[df['Type'] == 'Buy'].copy()
-    sells = df[df['Type'] == 'Sell'].copy()
-
-    buy_agg = buys.groupby('Ticker', as_index=False).apply(lambda x: pd.Series({
-        'Total Buy Shares': x['Shares'].sum(),
-        'Total Invested': (x['Shares'] * x['Buy Price']).sum(),
-        'Avg Buy Price': (x['Shares'] * x['Buy Price']).sum() / x['Shares'].sum(),
-        'Sector': x['Sector'].iloc[0]
-    })).reset_index(drop=True)
-
-    sell_agg = sells.groupby('Ticker', as_index=False).apply(lambda x: pd.Series({
-        'Total Sell Shares': x['Shares'].sum(),
-        'Total Realized Gain': (x['Shares'] * x['Sell Price']).sum() - (x['Shares'] * x['Buy Price']).sum()
-    })).reset_index(drop=True)
-
-    if not buy_agg.empty and not sell_agg.empty:
-        agg = pd.merge(buy_agg, sell_agg, on="Ticker", how="left").fillna(0)
-    else:
-        agg = buy_agg.copy()
-        for col in ['Total Sell Shares', 'Total Realized Gain']:
-            if col not in agg.columns:
-                agg[col] = 0.0
+    df['Ticker'] = df['Ticker'].str.upper()
+    agg = df.groupby('Ticker').apply(
+        lambda x: pd.Series({
+            'Total Shares': x['Shares'].sum(),
+            'Total Invested': (x['Shares'] * x['Buy Price']).sum(),
+            'Avg Buy Price': (x['Shares'] * x['Buy Price']).sum() / x['Shares'].sum(),
+            'Sector': x['Sector'].iloc[0]
+        })
+    ).reset_index()
 
     prices = {}
     for t in agg['Ticker']:
@@ -93,22 +80,89 @@ if not df.empty:
             prices[t] = None
 
     agg['Current Price'] = agg['Ticker'].map(prices)
-    agg['Unrealized Value'] = agg['Current Price'] * (agg['Total Buy Shares'] - agg['Total Sell Shares'])
-    agg['Unrealized Gain'] = agg['Unrealized Value'] - (agg['Avg Buy Price'] * (agg['Total Buy Shares'] - agg['Total Sell Shares']))
-    agg['Market Value'] = agg['Current Price'] * agg['Total Buy Shares']
-    agg['Total Gain'] = agg['Total Realized Gain'] + agg['Unrealized Gain']
+    agg['Market Value'] = agg['Current Price'] * agg['Total Shares']
+    agg['P/L ($)'] = agg['Market Value'] - agg['Total Invested']
+    agg['P/L (%)'] = (agg['P/L ($)'] / agg['Total Invested']) * 100
+    total_invested = agg['Total Invested'].sum()
+    agg['Portfolio %'] = (agg['Total Invested'] / total_invested) * 100
 
-    st.subheader("📈 Portfolio Summary")
+    total_value = agg['Market Value'].sum()
+    profit = total_value - total_invested
+    profit_pct = (profit / total_invested) * 100
+
+    # === METRICS ===
+    top1, top2, top3 = st.columns([2, 1, 1])
+    with top1:
+        st.markdown("### 💼 Portfolio Summary")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Invested", f"${total_invested:,.2f}")
+        c2.metric("Market Value", f"${total_value:,.2f}")
+        c3.metric("Total P/L", f"${profit:,.2f}", f"{profit_pct:.2f}%")
+
+    with top2:
+        st.markdown("### 🧩 Sector Allocation")
+        pie_data = agg.groupby('Sector')['Total Invested'].sum()
+        fig1, ax1 = plt.subplots(figsize=(3, 3))
+        ax1.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
+        ax1.axis('equal')
+        st.pyplot(fig1)
+
+    with top3:
+        st.markdown("### 📈 Sector P/L")
+        sector_pl = agg.groupby('Sector')['P/L ($)'].sum()
+        fig2, ax2 = plt.subplots(figsize=(3, 2))
+        sector_pl.plot(kind='bar', ax=ax2, color='teal')
+        ax2.set_ylabel("P/L ($)")
+        ax2.set_title("Sector P/L")
+        st.pyplot(fig2)
+
+    # === PORTFOLIO TABLE ===
+    st.subheader("🧾 Portfolio Overview")
     st.dataframe(agg.style.format({
-        'Total Invested': '${:.2f}',
         'Avg Buy Price': '${:.2f}',
         'Current Price': '${:.2f}',
-        'Unrealized Value': '${:.2f}',
-        'Unrealized Gain': '${:.2f}',
-        'Total Realized Gain': '${:.2f}',
-        'Total Gain': '${:.2f}',
-        'Market Value': '${:.2f}'
+        'Market Value': '${:.2f}',
+        'Total Invested': '${:.2f}',
+        'P/L ($)': '${:.2f}',
+        'P/L (%)': '{:.2f}%',
+        'Portfolio %': '{:.2f}%'
     }), use_container_width=True)
 
+    # === Editable Trade Section ===
+    st.markdown("---")
+    st.markdown("### ✏️ Edit or Delete a Trade")
+    df['label'] = df.apply(lambda row: f"{row['Ticker']} - {row['Shares']} @ ${row['Buy Price']} on {pd.to_datetime(row['Date']).date()}", axis=1)
+    selection = st.selectbox("Select Trade", df['label'].tolist())
+    selected_index = df[df['label'] == selection].index[0]
+
+    trade = df.loc[selected_index]
+    edit_col1, edit_col2 = st.columns(2)
+    new_ticker = edit_col1.text_input("Edit Ticker", trade['Ticker'])
+    new_date = edit_col2.date_input("Edit Date", pd.to_datetime(trade['Date']))
+    edit_col3, edit_col4, edit_col5 = st.columns(3)
+    new_price = edit_col3.number_input("Edit Buy Price", value=float(trade['Buy Price']))
+    new_shares = edit_col4.number_input("Edit Shares", value=float(trade['Shares']), format="%.6f")
+    new_sector = edit_col5.selectbox("Edit Sector", sector_options, index=sector_options.index(trade['Sector']) if trade['Sector'] in sector_options else 0)
+
+    col_a, col_b = st.columns(2)
+    if col_a.button("✅ Update Trade"):
+        df.at[selected_index, 'Ticker'] = new_ticker.upper()
+        df.at[selected_index, 'Date'] = new_date
+        df.at[selected_index, 'Buy Price'] = new_price
+        df.at[selected_index, 'Shares'] = new_shares
+        df.at[selected_index, 'Sector'] = new_sector
+        df.drop(columns=['label'], inplace=True)
+        sheet.clear()
+        set_with_dataframe(sheet, df)
+        st.success("Trade updated!")
+
+    if col_b.button("🗑️ Delete Trade"):
+        df.drop(index=selected_index, inplace=True)
+        df.drop(columns=['label'], inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        sheet.clear()
+        set_with_dataframe(sheet, df)
+        st.warning("Trade deleted!")
+
 else:
-    st.info("No trades yet. Add some using the form above.")
+    st.info("Add trades to get started.")
