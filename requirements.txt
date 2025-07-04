@@ -5,3 +5,4 @@ matplotlib
 gspread
 gspread-dataframe
 oauth2client
+gspread_pandas
