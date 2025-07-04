@@ -117,7 +117,8 @@ if not df.empty:
     st.markdown("---")
     st.markdown("### ✏️ Edit or Delete a Trade")
 
-    df['label'] = df.apply(lambda row: f"{row['Ticker']} - {row['Shares']} @ ${row['Buy Price']} on {row['Date'].date()}", axis=1)
+   df['label'] = df.apply(lambda row: f"{row['Ticker']} - {row['Shares']} @ ${row['Buy Price']} on {pd.to_datetime(row['Date']).date()}", axis=1)
+
     selection = st.selectbox("Select Trade", df['label'].tolist())
     selected_index = df[df['label'] == selection].index[0]
 
