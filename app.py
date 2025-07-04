@@ -77,14 +77,15 @@ if not df.empty:
     buy_df = df[df['Trade Type'] == 'Buy']
     sell_df = df[df['Trade Type'] == 'Sell']
 
-    agg = buy_df.groupby('Ticker').apply(
-        lambda x: pd.Series({
-            'Total Shares': x['Shares'].sum(),
-            'Total Invested': (x['Shares'] * x['Buy Price']).sum(),
-            'Avg Buy Price': (x['Shares'] * x['Buy Price']).sum() / x['Shares'].sum(),
-            'Sector': x['Sector'].iloc[0]
-        })
-    ).reset_index()
+    agg = buy_df.groupby('Ticker', as_index=False).apply(
+    lambda x: pd.Series({
+        'Total Shares': x['Shares'].sum(),
+        'Total Invested': (x['Shares'] * x['Buy Price']).sum(),
+        'Avg Buy Price': (x['Shares'] * x['Buy Price']).sum() / x['Shares'].sum(),
+        'Sector': x['Sector'].iloc[0]
+    })
+)
+
 
     sell_shares = sell_df.groupby('Ticker')['Shares'].sum()
     agg['Sold Shares'] = agg['Ticker'].map(sell_shares).fillna(0)
