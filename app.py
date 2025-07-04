@@ -3,21 +3,33 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import datetime
-import os
 import matplotlib.pyplot as plt
+import gspread
+from gspread_dataframe import get_as_dataframe, set_with_dataframe
+from oauth2client.service_account import ServiceAccountCredentials
 
-DATA_FILE = 'portfolio_data.csv'
+# === CONFIG ===
 st.set_page_config(page_title="Stock Portfolio Tracker", layout="wide", page_icon="📈")
+SHEET_ID = "12Aje52kDt7nh0uk4aLpPyaYiVMivQrornyuwUP3bJew"
+SHEET_NAME = "Sheet1"
 
-# Load or initialize data
-if os.path.exists(DATA_FILE):
-    df = pd.read_csv(DATA_FILE, parse_dates=['Date'])
-else:
+# === AUTHENTICATION ===
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+credentials_dict = st.secrets["gcp_service_account"]
+creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+client = gspread.authorize(creds)
+sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
+
+# === LOAD DATA ===
+try:
+    df = get_as_dataframe(sheet, evaluate_formulas=True).dropna(how='all')
+    df['Date'] = pd.to_datetime(df['Date'])
+except Exception as e:
     df = pd.DataFrame(columns=['Ticker', 'Date', 'Buy Price', 'Shares', 'Sector'])
 
 st.title("📊 Stock Portfolio Tracker")
 
-# Entry form
+# === TRADE ENTRY ===
 with st.form("Add Entry"):
     col1, col2 = st.columns(2)
     ticker = col1.text_input("Stock Ticker").strip().upper()
@@ -39,12 +51,12 @@ with st.form("Add Entry"):
                 'Sector': [sector]
             })
             df = pd.concat([df, new_row], ignore_index=True)
-            df.to_csv(DATA_FILE, index=False)
+            set_with_dataframe(sheet, df)
             st.success(f"Added {shares} shares of {ticker}!")
         else:
             st.error("Please fill in all fields with valid values.")
 
-# Portfolio logic
+# === PORTFOLIO LOGIC ===
 if not df.empty:
     df['Ticker'] = df['Ticker'].str.upper()
     agg = df.groupby('Ticker').apply(
@@ -74,9 +86,8 @@ if not df.empty:
     profit = total_value - total_invested
     profit_pct = (profit / total_invested) * 100
 
-    # --- Top Row: Metrics + Charts ---
+    # === METRICS ===
     top1, top2, top3 = st.columns([2, 1, 1])
-
     with top1:
         st.markdown("### 💼 Portfolio Summary")
         c1, c2, c3 = st.columns(3)
@@ -101,7 +112,7 @@ if not df.empty:
         ax2.set_title("Sector P/L")
         st.pyplot(fig2)
 
-    # --- Portfolio Table ---
+    # === PORTFOLIO TABLE ===
     st.subheader("🧾 Portfolio Overview")
     st.dataframe(agg.style.format({
         'Avg Buy Price': '${:.2f}',
@@ -112,41 +123,5 @@ if not df.empty:
         'P/L (%)': '{:.2f}%',
         'Portfolio %': '{:.2f}%'
     }), use_container_width=True)
-
-    # --- Editable Trade Section at Bottom ---
-    st.markdown("---")
-    st.markdown("### ✏️ Edit or Delete a Trade")
-
-    df['label'] = df.apply(lambda row: f"{row['Ticker']} - {row['Shares']} @ ${row['Buy Price']} on {row['Date'].date()}", axis=1)
-    selection = st.selectbox("Select Trade", df['label'].tolist())
-    selected_index = df[df['label'] == selection].index[0]
-
-    trade = df.loc[selected_index]
-    edit_col1, edit_col2 = st.columns(2)
-    new_ticker = edit_col1.text_input("Edit Ticker", trade['Ticker'])
-    new_date = edit_col2.date_input("Edit Date", pd.to_datetime(trade['Date']))
-    edit_col3, edit_col4, edit_col5 = st.columns(3)
-    new_price = edit_col3.number_input("Edit Buy Price", value=float(trade['Buy Price']))
-    new_shares = edit_col4.number_input("Edit Shares", value=float(trade['Shares']), format="%.6f")
-    new_sector = edit_col5.selectbox("Edit Sector", sector_options, index=sector_options.index(trade['Sector']) if trade['Sector'] in sector_options else 0)
-
-    col_a, col_b = st.columns(2)
-    if col_a.button("✅ Update Trade"):
-        df.at[selected_index, 'Ticker'] = new_ticker.upper()
-        df.at[selected_index, 'Date'] = new_date
-        df.at[selected_index, 'Buy Price'] = new_price
-        df.at[selected_index, 'Shares'] = new_shares
-        df.at[selected_index, 'Sector'] = new_sector
-        df.drop(columns=['label'], inplace=True)
-        df.to_csv(DATA_FILE, index=False)
-        st.success("Trade updated!")
-
-    if col_b.button("🗑️ Delete Trade"):
-        df.drop(index=selected_index, inplace=True)
-        df.drop(columns=['label'], inplace=True)
-        df.reset_index(drop=True, inplace=True)
-        df.to_csv(DATA_FILE, index=False)
-        st.warning("Trade deleted!")
-
 else:
     st.info("Add trades to get started.")
