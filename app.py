@@ -109,11 +109,15 @@ if not df.empty:
 
     with top3:
         st.markdown("### 📈 Sector P/L")
-        sector_pl = agg.groupby('Sector')['P/L ($)'].sum()
-        fig2, ax2 = plt.subplots(figsize=(3, 2))
-        sector_pl.plot(kind='bar', ax=ax2, color='teal')
-        ax2.set_ylabel("P/L ($)")
-        ax2.set_title("Sector P/L")
+        sector_data = agg.groupby('Sector')[['Total Invested', 'P/L ($)']].sum()
+        sector_data['P/L (%)'] = (sector_data['P/L ($)'] / sector_data['Total Invested']) * 100
+        fig2, ax2 = plt.subplots(figsize=(5, 3))
+        bars = ax2.bar(sector_data.index, sector_data['P/L (%)'], color='teal')
+        ax2.set_ylabel("P/L (%)")
+        ax2.set_title("Sector P/L (%)")
+        for bar, pct in zip(bars, sector_data['P/L (%)']):
+            ax2.annotate(f"{pct:.1f}%", xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                         xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
         st.pyplot(fig2)
 
     # === PORTFOLIO TABLE ===
